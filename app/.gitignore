@@ -1,0 +1,3 @@
+/build
+# Ignore secrets.properties.properties
+secrets.properties
