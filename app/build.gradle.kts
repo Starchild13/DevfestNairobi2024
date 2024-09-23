@@ -1,8 +1,12 @@
+
 import java.util.Properties
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-}
+        plugins {
+            id("com.android.application")
+            id("org.jetbrains.kotlin.android")
+
+        }
+
+
 
 android {
     namespace = "com.example.geminidemo"
@@ -10,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.geminidemo"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -28,11 +32,11 @@ android {
         localProperties.load(localPropertiesFile.inputStream())
     }
 
-    val translateApiKey: String = localProperties.getProperty("translateApiKey", "")
+    val apiKey: String = localProperties.getProperty("apiKey", "")
 
     android {
         defaultConfig {
-            buildConfigField("String", "TRANSLATE_API_KEY", "\"$translateApiKey\"")
+            buildConfigField("String", "API_KEY", "\"$apiKey\"")
         }
     }
 
@@ -60,13 +64,15 @@ android {
     }
     packaging {
         resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes +=  "/META-INF/**"
         }
     }
+
 }
 
 dependencies {
 
+    implementation(libs.language.id.v1704)
     implementation(libs.androidx.core.ktx.v1120)
     implementation(libs.androidx.lifecycle.runtime.ktx.v262)
     implementation(libs.androidx.activity.compose.v181)
@@ -75,17 +81,26 @@ dependencies {
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)
     implementation(libs.material3)
+    implementation(libs.language.id.common)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit.v115)
     androidTestImplementation(libs.androidx.espresso.core.v351)
     androidTestImplementation(platform(libs.androidx.compose.bom.v20240800))
     androidTestImplementation(libs.ui.test.junit4)
+
     debugImplementation(libs.ui.tooling)
     debugImplementation(libs.ui.test.manifest)
 
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.generativeai.v011)
-    implementation(libs.google.cloud.translate)
-    implementation(libs.google.cloud.translate)
+
+
 
 
 }
+
+
+
+
