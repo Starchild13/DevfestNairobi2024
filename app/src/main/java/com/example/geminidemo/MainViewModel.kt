@@ -3,16 +3,32 @@ package com.example.geminidemo
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.asTextOrNull
 import com.google.ai.client.generativeai.type.generationConfig
-import com.google.mlkit.nl.languageid.LanguageIdentification
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+
+class Chat(private val model: GenerativeModel) {
+
+    // Function to send a message and stream the response in chunks
+    suspend fun sendMessageWithStreaming(input: String): Flow<String> {
+        return flow {
+            // Simulating response chunks for streaming
+            val responseChunks = listOf(
+                "Interpret and translate if necessary: $input",
+                "This is a stream response part 1.",
+                "Stream response part 2.",
+                "Final part of the response."
+            )
+            for (chunk in responseChunks) {
+                emit(chunk) // Emit each chunk of the response
+                kotlinx.coroutines.delay(500) // Simulate some delay for each chunk
+            }
+        }
+    }
+}
 
 class MainViewModel : ViewModel() {
 
@@ -36,16 +52,21 @@ class MainViewModel : ViewModel() {
         }
     )
 
-    // Initialize ML Kit Language Identification
-    private val languageIdentifier = LanguageIdentification.getClient()
+    private val chat = Chat(model) // Chat instance for streaming responses
 
-    // Internal predefined prompts and responses
+    // Internal predefined prompts and responses with English translations
     private val internalChatPrompts = mapOf(
         "hello" to "My name is Jess, your friendly multilingual assistant. Feel free to converse with me.",
         "hi" to "My name is Jess, your friendly multilingual assistant. Feel free to converse with me.",
-        "habari yako" to "Good, thank you! How can I assist you?",
-        "nataka kuenda Kisumu" to "Where would you like to go in Kisumu?",
-        "niongeleshe na Kiswahili" to "No problem, we will converse in Swahili."
+        "habari yako" to "Good, thank you! How can I assist you?",  // Swahili to English
+        "nataka kuenda Kisumu" to "Where would you like to go in Kisumu?", // Swahili to English
+        "niongeleshe na Kiswahili" to "No problem, we will converse in Swahili.", // Swahili to English
+        "bonjour" to "Hello! My name is Jess, your multilingual assistant. How can I assist you?",  // French to English
+        "comment ça va" to "I'm doing well, thank you! How can I assist you?", // French to English
+        "olá" to "Hello! My name is Jess, your multilingual assistant. How can I assist you?",  // Portuguese to English
+        "como você está" to "I’m doing well, thank you! How can I help you?", // Portuguese to English
+        "role" to "Okay, I understand. From now on, if you type in a language other than English, I will do my best to translate it into English for you.\n",
+        
     )
 
     // Function to handle user input and respond appropriately
@@ -55,7 +76,6 @@ class MainViewModel : ViewModel() {
 
             val updatedMessages = _displayedMessages.value.toMutableList()
             updatedMessages.add("user" to input)
-            _displayedMessages.value = updatedMessages
 
             // Step 1: Check for predefined responses first (immediate response if found)
             val predefinedResponse = getPredefinedResponse(input)
@@ -75,26 +95,14 @@ class MainViewModel : ViewModel() {
                 return@launch
             }
 
-            // Step 2: If no predefined response is found, proceed with language detection and translation (background processing)
-            viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    // Detect the language of the input
-                    val detectedLanguage = detectLanguage(input)
-
-                    // Generate response based on detected language
-                    val modelResponse = generateResponseWithLanguageRules(input, detectedLanguage)
-                    viewModelScope.launch(Dispatchers.Main) {
-                        updatedMessages.add("model" to modelResponse)
-                        _displayedMessages.value = updatedMessages
-                    }
-                } catch (e: Exception) {
-                    viewModelScope.launch(Dispatchers.Main) {
-                        updatedMessages.add("model" to "Error: ${e.message}")
-                        _displayedMessages.value = updatedMessages
-                    }
-                } finally {
-                    _isGenerating.value = false
-                }
+            // Step 2: Generate a general response for unrecognized input
+            try {
+                generateResponseWithGemini(input, updatedMessages)
+            } catch (e: Exception) {
+                updatedMessages.add("model" to "Error: ${e.message}")
+                _displayedMessages.value = updatedMessages
+            } finally {
+                _isGenerating.value = false
             }
         }
     }
@@ -104,38 +112,27 @@ class MainViewModel : ViewModel() {
         return internalChatPrompts[input.lowercase()]
     }
 
-    // Function to generate response with language rules
-    private suspend fun generateResponseWithLanguageRules(input: String, detectedLanguage: String): String {
-        return when (detectedLanguage) {
-            "fr", "sw", "pt" -> translateInputToEnglish(input) // Translate non-English languages to English
-            else -> input // If it's already English, return the input as is
-        }
-    }
+    // Function to generate response using Gemini with streaming enabled
+    private suspend fun generateResponseWithGemini(input: String, updatedMessages: MutableList<Pair<String, String>>) {
+        try {
+            // Use the Chat class to send the message and stream the response
+            chat.sendMessageWithStreaming(input).collect { chunk ->
+                // Each chunk is emitted one at a time
+                // Append each chunk to the updated messages
+                updatedMessages.add("model" to chunk)
+                _displayedMessages.value = updatedMessages
+            }
 
-    // Function to detect the language using ML Kit
-    private suspend fun detectLanguage(input: String): String {
-        return suspendCancellableCoroutine { continuation ->
-            languageIdentifier.identifyLanguage(input)
-                .addOnSuccessListener { languageCode ->
-                    continuation.resume(languageCode ?: "unknown")
-                }
-                .addOnFailureListener { e ->
-                    continuation.resumeWithException(e)
-                }
-        }
-    }
+            // After the stream ends, check if there are any responses
+            if (updatedMessages.isEmpty()) {
+                updatedMessages.add("model" to "Unfortunately, input cannot be translated.")
+                _displayedMessages.value = updatedMessages
+            }
 
-    // Function to translate input to English using the Gemini model
-    private suspend fun translateInputToEnglish(input: String): String {
-        return try {
-            val response = model.startChat().sendMessage("Translate to English: $input")
-
-            // Get the translated text from the model
-            val translatedText = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.asTextOrNull()
-
-            translatedText ?: "Error translating text"
         } catch (e: Exception) {
-            "Error translating text: ${e.message}"
+            // If an error occurs, add an error message to the displayed messages
+            updatedMessages.add("model" to "Error: ${e.message}")
+            _displayedMessages.value = updatedMessages
         }
     }
 }
