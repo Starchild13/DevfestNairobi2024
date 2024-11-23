@@ -39,10 +39,11 @@ class MainViewModel : ViewModel() {
     val isGenerating: StateFlow<Boolean> = _isGenerating
 
     private var greetingShown = false // Track whether the greeting has been shown
-
+     val api_key = ""
     // Initialize the Gemini model with configuration
     private val model = GenerativeModel(
         "gemini-1.0-pro",
+//        api_key,
         BuildConfig.API_KEY, // API key from BuildConfig
         generationConfig = generationConfig {
             temperature = 0.9f
@@ -81,12 +82,12 @@ class MainViewModel : ViewModel() {
             val predefinedResponse = getPredefinedResponse(input)
             if (predefinedResponse != null) {
                 // Handle greeting logic to prevent repeating it
-                if (predefinedResponse.contains("My name is Jess") && greetingShown) {
-                    _isGenerating.value = false
-                    return@launch
-                } else if (predefinedResponse.contains("My name is Jess")) {
-                    greetingShown = true
-                }
+//                if (predefinedResponse.contains("My name is Jess") && greetingShown) {
+//                    _isGenerating.value = false
+//                    return@launch
+//                } else if (predefinedResponse.contains("My name is Jess")) {
+//                    greetingShown = true
+//                }
 
                 // Add predefined response instantly without delay
                 updatedMessages.add("model" to predefinedResponse)
@@ -108,8 +109,8 @@ class MainViewModel : ViewModel() {
     }
 
     // Function to check predefined responses based on input
-    private fun getPredefinedResponse(input: String): String? {
-        return internalChatPrompts[input.lowercase()]
+    private fun getPredefinedResponse(input: String): String {
+        return internalChatPrompts[input.lowercase()] ?: input
     }
 
     // Function to generate response using Gemini with streaming enabled
