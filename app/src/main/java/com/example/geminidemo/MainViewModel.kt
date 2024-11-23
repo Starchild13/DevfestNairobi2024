@@ -43,8 +43,8 @@ class MainViewModel : ViewModel() {
     // Initialize the Gemini model with configuration
     private val model = GenerativeModel(
         "gemini-1.0-pro",
-        api_key,
-//        BuildConfig.API_KEY, // API key from BuildConfig
+//        api_key,
+        BuildConfig.API_KEY, // API key from BuildConfig
         generationConfig = generationConfig {
             temperature = 0.9f
             topP = 1f
