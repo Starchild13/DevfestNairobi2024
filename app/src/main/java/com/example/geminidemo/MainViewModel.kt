@@ -1,4 +1,3 @@
-
 package com.example.geminidemo
 
 import androidx.lifecycle.ViewModel
@@ -15,12 +14,13 @@ import kotlinx.coroutines.launch
 class Chat(private val model: GenerativeModel) {
 
     // Function to send a message and stream the response in chunks
-    suspend fun sendMessageWithStreaming(input: String): Flow<String> {
+    fun sendMessageWithStreaming(input: String): Flow<String> {
         return flow {
             // Send the input to the Gemini model and stream the response
             val chatHistory = listOf(
-                content("user") { text(
-                    """
+                content("user") {
+                    text(
+                        """
                 Human:
                 
                 You are Jess, a friendly multilingual assistant. To greet the user, use exactly the text in the example below. Do not be creative. 
@@ -41,7 +41,8 @@ class Chat(private val model: GenerativeModel) {
                 
                 User: $input
                 """
-                ) },
+                    )
+                },
                 content("model") { text("My name is Jess, your friendly multilingual assistant. Feel free to ask me any question.") }
             )
             val chat = model.startChat(chatHistory)
@@ -52,17 +53,20 @@ class Chat(private val model: GenerativeModel) {
             // response
 
             // If you want to simulate streaming, split the response into parts
-            val responseChunks =
-                response.text?.chunked(100) // Example: Chunk response into 100-character parts
-            if (responseChunks != null) {
-                for (chunk in responseChunks) {
-                    emit(chunk)
-                    kotlinx.coroutines.delay(500) // Simulate delay
-                }
-            }
+//            val responseChunks =
+//                response.text?.chunked(100) // Example: Chunk response into 100-character parts
+//            if (responseChunks != null) {
+//                for (chunk in responseChunks) {
+//                    emit(chunk)
+//                    kotlinx.coroutines.delay(500) // Simulate delay
+//                }
+//
+//            }
         }
+
     }
 }
+
 
 class MainViewModel : ViewModel() {
 
@@ -77,7 +81,7 @@ class MainViewModel : ViewModel() {
     // Initialize the Gemini model with configuration
     private val model = GenerativeModel(
         "gemini-1.0-pro",
-        apiKey = "AIzaSyBqmhqAl2VpY6rXaaDaag7wYyvXj4RonUc",
+        apiKey = "",
 //        BuildConfig.API_KEY, // API key from BuildConfig
         generationConfig = generationConfig {
             temperature = 0.9f
@@ -109,8 +113,11 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    // Function to generate response using Gemini with streaming enabled
-    private suspend fun generateResponseWithGemini(input: String, updatedMessages: MutableList<Pair<String, String>>) {
+    // Function to generate response using GDispatchers.IOemini with streaming enabled
+    private suspend fun generateResponseWithGemini(
+        input: String,
+        updatedMessages: MutableList<Pair<String, String>>
+    ) {
         try {
             // Use the Chat class to send the message and stream the response
             chat.sendMessageWithStreaming(input).collect { chunk ->
