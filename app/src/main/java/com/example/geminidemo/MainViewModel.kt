@@ -1,8 +1,10 @@
+
 package com.example.geminidemo
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.generationConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,16 +17,48 @@ class Chat(private val model: GenerativeModel) {
     // Function to send a message and stream the response in chunks
     suspend fun sendMessageWithStreaming(input: String): Flow<String> {
         return flow {
-            // Simulating response chunks for streaming
-            val responseChunks = listOf(
-                "Interpret and translate if necessary: $input",
-                "This is a stream response part 1.",
-                "Stream response part 2.",
-                "Final part of the response."
+            // Send the input to the Gemini model and stream the response
+            val chatHistory = listOf(
+                content("user") { text(
+                    """
+                Human:
+                
+                You are Jess, a friendly multilingual assistant. To greet the user, use exactly the text in the example below. Do not be creative. 
+                ALWAYS START WITH ENGLISH. If the user asks to use Swahili, switch to Swahili. If the user says hello or hi or any other greeting respond with exactly the text in the example below.
+                
+                <example>
+                  My name is Jess, your friendly multilingual assistant. Feel free to ask me any question.
+                </example>
+                
+                ALL YOUR RESPONSES SHOULD BE DIRECT STYLE AND CONCISE. YOUR RESPONSE SHOULD NOT BE MORE THAN SIX SENTENCES LONG. ALL YOUR SENTENCES SHOULD NOT BE MORE THAN TEN WORDS.
+                
+                Your function is to:
+                - Start responding in the user's language unless it is English.
+                - If the user starts in English, respond in Swahili.
+                - Continue in the language the user starts with if it is French or Portuguese.
+                - If mixed languages are detected, switch to Swahili.
+                - Default to Swahili for unsupported languages.
+                
+                User: $input
+                """
+                ) },
+                content("model") { text("My name is Jess, your friendly multilingual assistant. Feel free to ask me any question.") }
             )
-            for (chunk in responseChunks) {
-                emit(chunk) // Emit each chunk of the response
-                kotlinx.coroutines.delay(500) // Simulate some delay for each chunk
+            val chat = model.startChat(chatHistory)
+
+            // Simulate streaming response from the model
+            val response = chat.sendMessage(input)
+            response.text?.let { emit(it) } // You can adjust how you handle this based on model's actual
+            // response
+
+            // If you want to simulate streaming, split the response into parts
+            val responseChunks =
+                response.text?.chunked(100) // Example: Chunk response into 100-character parts
+            if (responseChunks != null) {
+                for (chunk in responseChunks) {
+                    emit(chunk)
+                    kotlinx.coroutines.delay(500) // Simulate delay
+                }
             }
         }
     }
@@ -39,12 +73,12 @@ class MainViewModel : ViewModel() {
     val isGenerating: StateFlow<Boolean> = _isGenerating
 
     private var greetingShown = false // Track whether the greeting has been shown
-     val api_key = ""
+
     // Initialize the Gemini model with configuration
     private val model = GenerativeModel(
         "gemini-1.0-pro",
-//        api_key,
-        BuildConfig.API_KEY, // API key from BuildConfig
+        apiKey = "AIzaSyBqmhqAl2VpY6rXaaDaag7wYyvXj4RonUc",
+//        BuildConfig.API_KEY, // API key from BuildConfig
         generationConfig = generationConfig {
             temperature = 0.9f
             topP = 1f
@@ -55,21 +89,6 @@ class MainViewModel : ViewModel() {
 
     private val chat = Chat(model) // Chat instance for streaming responses
 
-    // Internal predefined prompts and responses with English translations
-    private val internalChatPrompts = mapOf(
-        "hello" to "My name is Jess, your friendly multilingual assistant. Feel free to converse with me.",
-        "hi" to "My name is Jess, your friendly multilingual assistant. Feel free to converse with me.",
-        "habari yako" to "Good, thank you! How can I assist you?",  // Swahili to English
-        "nataka kuenda Kisumu" to "Where would you like to go in Kisumu?", // Swahili to English
-        "niongeleshe na Kiswahili" to "No problem, we will converse in Swahili.", // Swahili to English
-        "bonjour" to "Hello! My name is Jess, your multilingual assistant. How can I assist you?",  // French to English
-        "comment ça va" to "I'm doing well, thank you! How can I assist you?", // French to English
-        "olá" to "Hello! My name is Jess, your multilingual assistant. How can I assist you?",  // Portuguese to English
-        "como você está" to "I’m doing well, thank you! How can I help you?", // Portuguese to English
-        "role" to "Okay, I understand. From now on, if you type in a language other than English, I will do my best to translate it into English for you.\n",
-        
-    )
-
     // Function to handle user input and respond appropriately
     fun handleUserInput(input: String) {
         viewModelScope.launch {
@@ -78,25 +97,7 @@ class MainViewModel : ViewModel() {
             val updatedMessages = _displayedMessages.value.toMutableList()
             updatedMessages.add("user" to input)
 
-            // Step 1: Check for predefined responses first (immediate response if found)
-            val predefinedResponse = getPredefinedResponse(input)
-            if (predefinedResponse != null) {
-                // Handle greeting logic to prevent repeating it
-//                if (predefinedResponse.contains("My name is Jess") && greetingShown) {
-//                    _isGenerating.value = false
-//                    return@launch
-//                } else if (predefinedResponse.contains("My name is Jess")) {
-//                    greetingShown = true
-//                }
-
-                // Add predefined response instantly without delay
-                updatedMessages.add("model" to predefinedResponse)
-                _displayedMessages.value = updatedMessages
-                _isGenerating.value = false
-                return@launch
-            }
-
-            // Step 2: Generate a general response for unrecognized input
+            // Step 1: Generate a response for the input using the model
             try {
                 generateResponseWithGemini(input, updatedMessages)
             } catch (e: Exception) {
@@ -106,11 +107,6 @@ class MainViewModel : ViewModel() {
                 _isGenerating.value = false
             }
         }
-    }
-
-    // Function to check predefined responses based on input
-    private fun getPredefinedResponse(input: String): String {
-        return internalChatPrompts[input.lowercase()] ?: input
     }
 
     // Function to generate response using Gemini with streaming enabled
@@ -126,7 +122,7 @@ class MainViewModel : ViewModel() {
 
             // After the stream ends, check if there are any responses
             if (updatedMessages.isEmpty()) {
-                updatedMessages.add("model" to "Unfortunately, input cannot be translated.")
+                updatedMessages.add("model" to "Unfortunately, input cannot be processed.")
                 _displayedMessages.value = updatedMessages
             }
 
