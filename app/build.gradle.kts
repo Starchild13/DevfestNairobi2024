@@ -3,14 +3,14 @@ import java.util.Properties
         plugins {
             id("com.android.application")
             id("org.jetbrains.kotlin.android")
-
+            alias(libs.plugins.compose.compiler)
         }
 
 
 
 android {
     namespace = "com.example.geminidemo"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.geminidemo"
