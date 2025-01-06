@@ -1,4 +1,5 @@
 
+
 package com.example.geminidemo
 
 import androidx.lifecycle.ViewModel
@@ -6,60 +7,24 @@ import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.generationConfig
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class Chat(private val model: GenerativeModel) {
 
     // Function to send a message and stream the response in chunks
-    suspend fun sendMessageWithStreaming(input: String): Flow<String> {
-        return flow {
-            // Send the input to the Gemini model and stream the response
-            val chatHistory = listOf(
-                content("user") { text(
-                    """
-                Human:
-                
-                You are Jess, a friendly multilingual assistant. To greet the user, use exactly the text in the example below. Do not be creative. 
-                ALWAYS START WITH ENGLISH. If the user asks to use Swahili, switch to Swahili. If the user says hello or hi or any other greeting respond with exactly the text in the example below.
-                
-                <example>
-                  My name is Jess, your friendly multilingual assistant. Feel free to ask me any question.
-                </example>
-                
-                ALL YOUR RESPONSES SHOULD BE DIRECT STYLE AND CONCISE. YOUR RESPONSE SHOULD NOT BE MORE THAN SIX SENTENCES LONG. ALL YOUR SENTENCES SHOULD NOT BE MORE THAN TEN WORDS.
-                
-                Your function is to:
-                - Start responding in the user's language unless it is English.
-                - If the user starts in English, respond in Swahili.
-                - Continue in the language the user starts with if it is French or Portuguese.
-                - If mixed languages are detected, switch to Swahili.
-                - Default to Swahili for unsupported languages.
-                
-                User: $input
-                """
-                ) },
-                content("model") { text("My name is Jess, your friendly multilingual assistant. Feel free to ask me any question.") }
-            )
-            val chat = model.startChat(chatHistory)
+    suspend fun sendMessageWithStreaming(input: String): Flow<String> = flow {
+        val chatHistory = listOf(
+            content("user") { text("I'm ready to assist! Please define a word, and I'll respond to related commands.") }
+        )
 
-            // Simulate streaming response from the model
-            val response = chat.sendMessage(input)
-            response.text?.let { emit(it) } // You can adjust how you handle this based on model's actual
-            // response
+        val chat = model.startChat(chatHistory)
+        val response = chat.sendMessage(input)
 
-            // If you want to simulate streaming, split the response into parts
-            val responseChunks =
-                response.text?.chunked(100) // Example: Chunk response into 100-character parts
-            if (responseChunks != null) {
-                for (chunk in responseChunks) {
-                    emit(chunk)
-                    kotlinx.coroutines.delay(500) // Simulate delay
-                }
-            }
+        response.text?.chunked(100)?.forEach { chunk ->
+            emit(chunk)
+            delay(500) // Simulate delay between chunks
         }
     }
 }
@@ -72,64 +37,81 @@ class MainViewModel : ViewModel() {
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating
 
-    private var greetingShown = false // Track whether the greeting has been shown
+    private var currentWord: String? = null // Track the current word being defined
 
     // Initialize the Gemini model with configuration
     private val model = GenerativeModel(
         "gemini-1.0-pro",
-        apiKey = "AIzaSyBqmhqAl2VpY6rXaaDaag7wYyvXj4RonUc",
-//        BuildConfig.API_KEY, // API key from BuildConfig
+        apiKey = "AIzaSyBSxfsS5wZAtLFQR5InIDolvPge4Eo7r4o", // Replace with your actual API key
         generationConfig = generationConfig {
             temperature = 0.9f
             topP = 1f
-            maxOutputTokens = 2048
+            maxOutputTokens = 4096
             responseMimeType = "text/plain"
         }
     )
 
-    private val chat = Chat(model) // Chat instance for streaming responses
+    private val chat = Chat(model)
 
-    // Function to handle user input and respond appropriately
+    // Handles user input and processes commands
     fun handleUserInput(input: String) {
         viewModelScope.launch {
             _isGenerating.value = true
-
             val updatedMessages = _displayedMessages.value.toMutableList()
-            updatedMessages.add("user" to input)
 
-            // Step 1: Generate a response for the input using the model
+            when {
+                input.startsWith("Define ") -> handleDefineCommand(input, updatedMessages)
+                currentWord != null -> handleWordCommands(input, updatedMessages)
+                else -> {
+                    updatedMessages.add("user" to input)
+                    updatedMessages.add("model" to "Please define a word first using 'Define [word]'.")
+                }
+            }
+
+            _displayedMessages.value = updatedMessages
+            _isGenerating.value = false
+        }
+    }
+
+    // Handles the "Define [word]" command
+    private fun handleDefineCommand(input: String, updatedMessages: MutableList<Pair<String, String>>) {
+        val word = input.removePrefix("Define ").trim()
+        currentWord = word // Set the current word
+        updatedMessages.clear() // Clear chat history
+        updatedMessages.add("user" to input)
+        generateResponse("Define $word", updatedMessages)
+    }
+
+    // Handles commands related to the current word
+    private fun handleWordCommands(input: String, updatedMessages: MutableList<Pair<String, String>>) {
+        val command = input.trim()
+        currentWord?.let { word ->
+            updatedMessages.add("user" to input)
+            when {
+                command.equals("Pronounce it", ignoreCase = true) -> generateResponse("Pronounce $word", updatedMessages)
+                command.equals("Give me a Synonym", ignoreCase = true) -> generateResponse("Synonym of $word", updatedMessages)
+                command.equals("Give me an Example", ignoreCase = true) -> generateResponse("Use $word in a sentence", updatedMessages)
+                command.equals("Give me the Origin", ignoreCase = true) -> generateResponse("Origin of $word", updatedMessages)
+                else -> {
+                    updatedMessages.add("model" to "Unknown command. Try 'Pronounce it', 'Give me a Synonym', 'Give me an Example', or 'Give me the Origin'.")
+                }
+            }
+        }
+    }
+
+    // Generates a response using the Gemini model
+    private fun generateResponse(input: String, updatedMessages: MutableList<Pair<String, String>>) {
+        viewModelScope.launch {
             try {
-                generateResponseWithGemini(input, updatedMessages)
+                chat.sendMessageWithStreaming(input).collect { chunk ->
+                    updatedMessages.add("model" to chunk)
+                    _displayedMessages.value = updatedMessages
+                }
             } catch (e: Exception) {
                 updatedMessages.add("model" to "Error: ${e.message}")
                 _displayedMessages.value = updatedMessages
-            } finally {
-                _isGenerating.value = false
             }
-        }
-    }
-
-    // Function to generate response using Gemini with streaming enabled
-    private suspend fun generateResponseWithGemini(input: String, updatedMessages: MutableList<Pair<String, String>>) {
-        try {
-            // Use the Chat class to send the message and stream the response
-            chat.sendMessageWithStreaming(input).collect { chunk ->
-                // Each chunk is emitted one at a time
-                // Append each chunk to the updated messages
-                updatedMessages.add("model" to chunk)
-                _displayedMessages.value = updatedMessages
-            }
-
-            // After the stream ends, check if there are any responses
-            if (updatedMessages.isEmpty()) {
-                updatedMessages.add("model" to "Unfortunately, input cannot be processed.")
-                _displayedMessages.value = updatedMessages
-            }
-
-        } catch (e: Exception) {
-            // If an error occurs, add an error message to the displayed messages
-            updatedMessages.add("model" to "Error: ${e.message}")
-            _displayedMessages.value = updatedMessages
         }
     }
 }
+

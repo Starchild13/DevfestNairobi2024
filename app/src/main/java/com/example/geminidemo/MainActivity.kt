@@ -1,5 +1,6 @@
 package com.example.geminidemo
 
+
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -19,13 +20,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import com.example.geminidemo.ui.theme.GeminiChatTheme
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.collectAsState
 
 class MainActivity : ComponentActivity() {
 
@@ -36,9 +37,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             GeminiChatTheme {
-
                 var promptText by remember { mutableStateOf("") }
-                val conversations by mainViewModel.displayedMessages.collectAsState(initial = emptyList()) // Using collectAsState with initial value
+                val conversations by mainViewModel.displayedMessages.collectAsState(initial = emptyList())
                 val isGenerating by mainViewModel.isGenerating.collectAsState()
 
                 val keyboardController = LocalSoftwareKeyboardController.current
@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                     Scaffold(
                         topBar = {
                             CenterAlignedTopAppBar(
-                                title = { Text(text = "Gemini Chat") },
+                                title = { Text(text = "LexiSpell",fontWeight = FontWeight.Bold, fontSize = 30.sp) },
                             )
                         },
                         bottomBar = {
@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
                                     OutlinedTextField(
                                         value = promptText,
                                         onValueChange = { promptText = it },
-                                        label = { Text(text = "Message") },
+                                        label = { Text(text = "Enter Word") },
                                         modifier = Modifier.weight(1f)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -82,13 +82,13 @@ class MainActivity : ComponentActivity() {
                                         ),
                                         onClick = {
                                             if (promptText.isNotBlank() && !isGenerating) {
-                                                mainViewModel.handleUserInput(promptText) // Updated to handle input with ViewModel logic
+                                                mainViewModel.handleUserInput(promptText)
                                                 promptText = ""
                                                 keyboardController?.hide()
                                             } else if (promptText.isBlank()) {
                                                 Toast.makeText(
                                                     context,
-                                                    "Please enter a message",
+                                                    "Please enter a word",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             }
@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ConversationScreen(
-    conversations: List<Pair<String, String>>, // Use List of Pair for user/model and text
+    conversations: List<Pair<String, String>>, // Pair of user/model and word/feedback
     modifier: Modifier = Modifier
 ) {
     val lazyListState = rememberLazyListState()
@@ -138,7 +138,7 @@ fun ConversationScreen(
     ) {
         items(conversations) { conversation ->
             MessageItem(
-                isInComing = conversation.first == "model",  // Model message is "incoming"
+                isInComing = conversation.first == "model",
                 content = conversation.second
             )
         }
@@ -153,9 +153,9 @@ fun MessageItem(
     val cardShape by remember {
         derivedStateOf {
             if (isInComing) {
-                RoundedCornerShape(16.dp, 16.dp, 16.dp, 0.dp) // Rounded top-left for model messages
+                RoundedCornerShape(16.dp, 16.dp, 16.dp, 0.dp)
             } else {
-                RoundedCornerShape(16.dp, 16.dp, 0.dp, 16.dp) // Rounded top-right for user messages
+                RoundedCornerShape(16.dp, 16.dp, 0.dp, 16.dp)
             }
         }
     }
@@ -163,9 +163,9 @@ fun MessageItem(
     val cardPadding by remember {
         derivedStateOf {
             if (isInComing) {
-                PaddingValues(end = 24.dp) // Padding on the right for model messages (left side)
+                PaddingValues(end = 24.dp)
             } else {
-                PaddingValues(start = 24.dp) // Padding on the left for user messages (right side)
+                PaddingValues(start = 24.dp)
             }
         }
     }
@@ -195,3 +195,4 @@ fun MessageItem(
         }
     }
 }
+
